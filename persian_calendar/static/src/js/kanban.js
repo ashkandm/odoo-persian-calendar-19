@@ -1,5 +1,4 @@
-/** @odoo-module **/
-
+/** @odoo-module 
 import { KanbanRecord } from "@web/views/kanban/kanban_record";
 import { patch } from "@web/core/utils/patch";
 import { _t } from "@web/core/l10n/translation";
@@ -125,6 +124,24 @@ patch(KanbanRecord.prototype, {
     getFormattedValue(fieldId) {
         const { archInfo, record } = this.props;
         const { name } = archInfo.fieldNodes[fieldId];
+        return getFormattedValue(record, name, archInfo.fieldNodes[fieldId]);
+    }
+});
+**/
+/** @odoo-module **/
+
+import { KanbanRecord } from "@web/views/kanban/kanban_record";
+import { patch } from "@web/core/utils/patch";
+import { getFormattedValue } from "./format_utils";
+
+patch(KanbanRecord.prototype, {
+    /**
+     * Override getFormattedValue to apply Persian Calendar formatting
+     */
+    getFormattedValue(fieldId) {
+        const { archInfo, record } = this.props;
+        const { name } = archInfo.fieldNodes[fieldId];
+        // Call the custom formatter from format_utils.js which handles Persian conversion
         return getFormattedValue(record, name, archInfo.fieldNodes[fieldId]);
     }
 });
