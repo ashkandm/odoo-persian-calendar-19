@@ -100,7 +100,8 @@ const PRECISION_LEVELS = new Map()
         nextTitle: _t('Next month'),
         prevTitle: _t('Previous month'),
         step: { month: 1 },
-        getTitle: (date, { additionalMonth }) => {
+        // FIX: Added default value for destructuring (= {}) to prevent crash if undefined
+        getTitle: (date, { additionalMonth } = {}) => {
             const jDate = new JDate(date.toJSDate()).toLocale('fa');
             const titles = [`${jDate.format('MMMM')} ${jDate.format('YYYY')}`];
             if (additionalMonth) {
