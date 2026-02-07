@@ -39,6 +39,9 @@ export const datetimePickerService = {
     dependencies: ["popover"],
     start(env, { popover: popoverService }) {
         return {
+            /**
+             * @param {DateTimePickerHookParams} hookParams
+             */
             create: (hookParams, getInputs = () => [hookParams.target, null]) => {
                 const createPopover =
                     hookParams.createPopover ??
@@ -105,23 +108,44 @@ export const datetimePickerService = {
                     setInputFocus(inputEl);
                 };
 
+                /**
+                 * Helper to safely resolve DOM Element from Ref, Selector or Element
+                 */
+                const resolveElement = (el) => {
+                    if (!el) return null;
+                    if (el.nodeType) return el; // Already a DOM Node
+                    if (typeof el === 'object' && 'el' in el) return el.el; // OWL Ref
+                    if (typeof el === 'string') {
+                        try { return document.querySelector(el); } catch { return null; }
+                    }
+                    return el; // Return as is if we can't determine
+                };
+
+                /**
+                 * @param {number} valueIndex
+                 * @returns {HTMLInputElement | null}
+                 */
                 const getInput = (valueIndex) => {
-                    const el = getInputs()[valueIndex];
-                    if (el && document.body.contains(el)) {
+                    const el = resolveElement(getInputs()[valueIndex]);
+                    // FIX: Relaxed check (removed document.body.contains) to prevent silent failures
+                    if (el) {
                         return el;
                     }
                     return null;
                 };
 
                 const getPopoverTarget = () => {
-                    if (hookParams.target) {
-                        return hookParams.target;
+                    const target = resolveElement(hookParams.target);
+                    if (target) {
+                        return target;
                     }
                     if (pickerProps.range) {
-                        let parentElement = getInput(0).parentElement;
-                        const inputEls = getInputs();
+                        let parentElement = getInput(0)?.parentElement;
+                        const inputEls = [getInput(0), getInput(1)].filter(Boolean);
+                        // Loop up to find common parent
                         while (
                             parentElement &&
+                            inputEls.length > 0 &&
                             !inputEls.every((inputEl) => parentElement.contains(inputEl))
                         ) {
                             parentElement = parentElement.parentElement;
@@ -189,6 +213,13 @@ export const datetimePickerService = {
 
                     if (!popover.isOpen) {
                         const popoverTarget = getPopoverTarget();
+                        
+                        // FIX: Ensure target exists before trying to open
+                        if (!popoverTarget) {
+                            console.warn("Persian Calendar: Popover target not found.");
+                            return;
+                        }
+
                         if (ensureVisibility()) {
                             const { marginBottom } = popoverTarget.style;
                             popoverTarget.style.marginBottom = `100vh`;
@@ -231,18 +262,20 @@ export const datetimePickerService = {
                 };
 
                 const setFocusClass = (input) => {
-                    for (const el of getInputs()) {
+                    [getInput(0), getInput(1)].forEach((el) => {
                         if (el) {
                             el.classList.toggle(FOCUS_CLASSNAME, popover.isOpen && el === input);
                         }
-                    }
+                    });
                 };
 
                 const setInputFocus = (inputEl) => {
-                    inputEl.selectionStart = 0;
-                    inputEl.selectionEnd = inputEl.value.length;
-                    setFocusClass(inputEl);
-                    shouldFocus = false;
+                    if (inputEl) {
+                        inputEl.selectionStart = 0;
+                        inputEl.selectionEnd = inputEl.value.length;
+                        setFocusClass(inputEl);
+                        shouldFocus = false;
+                    }
                 };
 
                 const updateInput = (el, value) => {
@@ -253,7 +286,7 @@ export const datetimePickerService = {
 
                     if(luxon.DateTime.now().locale == 'fa-IR'){
                         let jressult_str = ""
-                        if(formattedValue.split(' ')[1]){
+                        if(formattedValue && formattedValue.split(' ')[1]){
                             if(formattedValue.split(' ')[0].split('/')[2]){
                                 const gressult = formattedValue.split(' ')[0].split('/');
                                 const jressult = farvardin.gregorianToSolar(parseInt(gressult[0]) , parseInt(gressult[1]) , parseInt(gressult[2]));
@@ -264,7 +297,7 @@ export const datetimePickerService = {
                                 jressult_str =  `${jressult[0]}-${leftPad(jressult[1], 2)}-${leftPad(jressult[2], 2)} ${formattedValue.split(' ')[1]}`;
                             }
                         }
-                        else{
+                        else if (formattedValue){
                             if(formattedValue.split('/')[2]){
                                 const gressult = formattedValue.split('/');
                                 const jressult = farvardin.gregorianToSolar(parseInt(gressult[0]) , parseInt(gressult[1]) , parseInt(gressult[2]));
@@ -312,7 +345,7 @@ export const datetimePickerService = {
 
                 const updateValueFromInputs = () => {
                     const values = zipWith(
-                        getInputs(),
+                        [getInput(0), getInput(1)],
                         ensureArray(pickerProps.value),
                         (el, currentValue) => {
                             if (!el) {
@@ -341,7 +374,6 @@ export const datetimePickerService = {
                                     jressult_str =  `${jressult[0]}-${leftPad(jressult[1], 2)}-${leftPad(jressult[2], 2)}`;
                                 }
                             }
-
                             const [parsedValue, error] = safeConvert("parse", jressult_str);
                            if (error) {
                                 updateInput(el, currentValue);
@@ -374,15 +406,10 @@ export const datetimePickerService = {
                     }
                     lastIsRange = currentIsRange;
 
-                    for (const [el, value] of zip(
-                        getInputs(),
-                        ensureArray(pickerProps.value),
-                        true
-                    )) {
-                        if (el) {
-                            updateInput(el, value);
-                        }
-                    }
+                    [getInput(0), getInput(1)].forEach((el, idx) => {
+                        const val = ensureArray(pickerProps.value)[idx];
+                        if (el) updateInput(el, val);
+                    });
 
                     shouldFocus = true;
                 });
@@ -398,7 +425,10 @@ export const datetimePickerService = {
                 const onIconClick = () => openPicker(0);
 
                 const cleanup = () => {
-                     for (const el of getInputs()) {
+                     // FIX: Use 0, 1 index and resolveElement instead of calling getInput which has checks
+                     [0, 1].forEach(idx => {
+                        const rawEl = getInputs()[idx];
+                        const el = resolveElement(rawEl);
                         if (el && listenedElements.has(el)) {
                             listenedElements.delete(el);
                             el.removeEventListener("change", onInputChange);
@@ -406,13 +436,15 @@ export const datetimePickerService = {
                             el.removeEventListener("focus", onInputFocus);
                             el.removeEventListener("keydown", onInputKeydown);
                         }
-                    }
-                    const calendarIconGroupEl = getInput(0)?.parentElement.querySelector(
-                        ".o_input_group_date_icon"
-                    );
-                    if (calendarIconGroupEl) {
-                        calendarIconGroupEl.classList.remove("cursor-pointer");
-                        calendarIconGroupEl.removeEventListener("click", onIconClick);
+                    });
+                    
+                    const input0 = resolveElement(getInputs()[0]);
+                    if (input0?.parentElement) {
+                        const icon = input0.parentElement.querySelector(".o_input_group_date_icon");
+                        if (icon) {
+                             icon.classList.remove("cursor-pointer");
+                             icon.removeEventListener("click", onIconClick);
+                        }
                     }
                 };
 
@@ -427,13 +459,14 @@ export const datetimePickerService = {
                     },
                     enable() {
                         let editableInputs = 0;
-                        for (const [el, value] of zip(
-                            getInputs(),
-                            ensureArray(pickerProps.value),
-                            true
-                        )) {
-                            updateInput(el, value);
-                            if (el && !el.disabled && !el.readOnly && !listenedElements.has(el)) {
+                        // Resolve inputs safely
+                        const inputEls = [resolveElement(getInputs()[0]), resolveElement(getInputs()[1])];
+                        const values = ensureArray(pickerProps.value);
+                        
+                        inputEls.forEach((el, i) => {
+                            if (!el) return;
+                            updateInput(el, values[i]);
+                            if (!el.disabled && !el.readOnly && !listenedElements.has(el)) {
                                 listenedElements.add(el);
                                 el.addEventListener("change", onInputChange);
                                 el.addEventListener("click", onInputClick);
@@ -441,22 +474,24 @@ export const datetimePickerService = {
                                 el.addEventListener("keydown", onInputKeydown);
                                 editableInputs++;
                             }
-                        }
-                        const calendarIconGroupEl = getInput(0)?.parentElement.querySelector(
-                            ".o_input_group_date_icon"
-                        );
-                        if (calendarIconGroupEl) {
-                            calendarIconGroupEl.classList.add("cursor-pointer");
-                            // Avoid adding duplicate listeners
-                            calendarIconGroupEl.removeEventListener("click", onIconClick);
-                            calendarIconGroupEl.addEventListener("click", onIconClick);
+                        });
+
+                        const input0 = inputEls[0];
+                        if (input0?.parentElement) {
+                            const icon = input0.parentElement.querySelector(".o_input_group_date_icon");
+                            if (icon) {
+                                icon.classList.add("cursor-pointer");
+                                // Fix: Remove before adding to prevent duplicates
+                                icon.removeEventListener("click", onIconClick);
+                                icon.addEventListener("click", onIconClick);
+                            }
                         }
                         if (!editableInputs && popover.isOpen) {
                             saveAndClose();
                         }
                         return cleanup;
                     },
-                    disable: cleanup, // This is the key fix
+                    disable: cleanup,
                     get isOpen() {
                         return popover.isOpen;
                     },
